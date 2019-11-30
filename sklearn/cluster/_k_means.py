@@ -792,7 +792,7 @@ class KMeans(TransformerMixin, ClusterMixin, BaseEstimator):
     def __init__(self, n_clusters=8, init='k-means++', n_init=10,
                  max_iter=300, tol=1e-4, precompute_distances='auto',
                  verbose=0, random_state=None, copy_x=True,
-                 n_jobs=None, algorithm='auto'):
+                 n_jobs=None, algorithm='auto', maxmem=None):
 
         self.n_clusters = n_clusters
         self.init = init
@@ -805,6 +805,8 @@ class KMeans(TransformerMixin, ClusterMixin, BaseEstimator):
         self.copy_x = copy_x
         self.n_jobs = n_jobs
         self.algorithm = algorithm
+        if algorithm == 'yinyang':
+            self.maxmem = maxmem
 
     def _check_test_data(self, X):
         X = check_array(X, accept_sparse='csr', dtype=FLOAT_DTYPES)
