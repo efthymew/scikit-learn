@@ -178,7 +178,7 @@ def _check_normalize_sample_weight(sample_weight, X):
 def k_means(X, n_clusters, sample_weight=None, init='k-means++',
             precompute_distances='auto', n_init=10, max_iter=300,
             verbose=False, tol=1e-4, random_state=None, copy_x=True,
-            n_jobs=None, algorithm="auto", return_n_iter=False):
+            n_jobs=None, algorithm="auto", maxmem=None, return_n_iter=False):
     """K-means clustering algorithm.
 
     Read more in the :ref:`User Guide <k_means>`.
@@ -292,7 +292,7 @@ def k_means(X, n_clusters, sample_weight=None, init='k-means++',
         n_clusters=n_clusters, init=init, n_init=n_init, max_iter=max_iter,
         verbose=verbose, precompute_distances=precompute_distances, tol=tol,
         random_state=random_state, copy_x=copy_x, n_jobs=n_jobs,
-        algorithm=algorithm
+        algorithm=algorithm, maxmem=maxmem
     ).fit(X, sample_weight=sample_weight)
     if return_n_iter:
         return est.cluster_centers_, est.labels_, est.inertia_, est.n_iter_
@@ -328,6 +328,13 @@ def _kmeans_single_elkan(X, sample_weight, n_clusters, max_iter=300,
         inertia = np.sum(sq_distances, dtype=np.float64)
     return labels, inertia, centers, n_iter
 
+# custom yin-yang implementation of k-means clustering
+#inspired by Dr. shen's paper, implemented by Graham Efthymiou
+def _kmeans_yinyang(X, sample_weight, n_clusters, max_iter=300,
+                    init='k-means++', verbose=False, x_squared_norms=None,
+                    random_state=None, tol=1e-4,
+                    precompute_distances=True):
+    pass
 
 def _kmeans_single_lloyd(X, sample_weight, n_clusters, max_iter=300,
                          init='k-means++', verbose=False, x_squared_norms=None,
@@ -920,8 +927,11 @@ class KMeans(TransformerMixin, ClusterMixin, BaseEstimator):
             kmeans_single = _kmeans_single_lloyd
         elif algorithm == "elkan":
             kmeans_single = _kmeans_single_elkan
+        elif algorithm == "yinyang":
+            #custom algorithm here
+            kmeans_single = _kmeans_yinyang
         else:
-            raise ValueError("Algorithm must be 'auto', 'full' or 'elkan', got"
+            raise ValueError("Algorithm must be 'auto', 'full', 'yinyang' or 'elkan', got"
                              " %s" % str(algorithm))
 
         seeds = random_state.randint(np.iinfo(np.int32).max, size=n_init)
