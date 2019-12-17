@@ -330,10 +330,11 @@ def _kmeans_single_elkan(X, sample_weight, n_clusters, max_iter=300,
 
 # custom yin-yang implementation of k-means clustering
 #inspired by Dr. shen's paper, implemented by Graham Efthymiou
+#has additional maxmem parameter
 def _kmeans_yinyang(X, sample_weight, n_clusters, max_iter=300,
                     init='k-means++', verbose=False, x_squared_norms=None,
                     random_state=None, tol=1e-4,
-                    precompute_distances=True):
+                    precompute_distances=True, maxmem=None):
     pass
 
 def _kmeans_single_lloyd(X, sample_weight, n_clusters, max_iter=300,
@@ -812,8 +813,7 @@ class KMeans(TransformerMixin, ClusterMixin, BaseEstimator):
         self.copy_x = copy_x
         self.n_jobs = n_jobs
         self.algorithm = algorithm
-        if algorithm == 'yinyang':
-            self.maxmem = maxmem
+        self.maxmem = maxmem
 
     def _check_test_data(self, X):
         X = check_array(X, accept_sparse='csr', dtype=FLOAT_DTYPES)
@@ -860,6 +860,20 @@ class KMeans(TransformerMixin, ClusterMixin, BaseEstimator):
                 'Number of iterations should be a positive number,'
                 ' got %d instead' % self.max_iter
             )
+        
+        #error handling on maxmem parameter 
+        if self.algorithm == 'yinyang':
+            maxmem_cap = self.maxmem
+            units = ['B', 'KB', 'MB', 'GB', 'TB']
+            if maxmem_cap[-2:].upper() not in units:
+                raise ValueError("Invalid unit for maxmem value. Value must end in \'B\', "
+                                 "\'KB\', \'MB\', \'GB\', or \'TB\'. Got %s" % maxmem_cap[-2:])
+            try:
+                float(maxmem_cap[:-2])
+            except Exception:
+                raise TypeError("Could not get valid value for maxmem property. "
+                                "Please have a valid float followed by: "
+                                "\'B\', \'KB\', \'MB\', \'GB\', or \'TB\'. Got %s" % maxmem_cap)
 
         # avoid forcing order when copy_x=False
         order = "C" if self.copy_x else None
@@ -917,6 +931,7 @@ class KMeans(TransformerMixin, ClusterMixin, BaseEstimator):
 
         best_labels, best_inertia, best_centers = None, None, None
         algorithm = self.algorithm
+        yy = False
         if self.n_clusters == 1:
             # elkan doesn't make sense for a single cluster, full will produce
             # the right result.
@@ -941,11 +956,17 @@ class KMeans(TransformerMixin, ClusterMixin, BaseEstimator):
             # thread).
             for seed in seeds:
                 # run a k-means once
-                labels, inertia, centers, n_iter_ = kmeans_single(
-                    X, sample_weight, self.n_clusters,
-                    max_iter=self.max_iter, init=init, verbose=self.verbose,
-                    precompute_distances=precompute_distances, tol=tol,
-                    x_squared_norms=x_squared_norms, random_state=seed)
+                # if 'yin-yang' we need to check to make sure a k-means run
+                # doesn't exceed the memory cap
+                if algorithm == 'yinyang':
+                    pass
+                else:
+                    labels, inertia, centers, n_iter_ = kmeans_single(
+                        X, sample_weight, self.n_clusters,
+                        max_iter=self.max_iter, init=init, verbose=self.verbose,
+                        precompute_distances=precompute_distances, tol=tol,
+                        x_squared_norms=x_squared_norms, random_state=seed)
+                
                 # determine if these results are the best so far
                 if best_inertia is None or inertia < best_inertia:
                     best_labels = labels.copy()
@@ -954,17 +975,21 @@ class KMeans(TransformerMixin, ClusterMixin, BaseEstimator):
                     best_n_iter = n_iter_
         else:
             # parallelisation of k-means runs
-            results = Parallel(n_jobs=self.n_jobs, verbose=0)(
-                delayed(kmeans_single)(
-                    X, sample_weight, self.n_clusters,
-                    max_iter=self.max_iter, init=init,
-                    verbose=self.verbose, tol=tol,
-                    precompute_distances=precompute_distances,
-                    x_squared_norms=x_squared_norms,
-                    # Change seed to ensure variety
-                    random_state=seed
-                )
-                for seed in seeds)
+            if algorithm == 'yinyang':
+                pass
+            else:
+                results = Parallel(n_jobs=self.n_jobs, verbose=0)(
+                    delayed(kmeans_single)(
+                        X, sample_weight, self.n_clusters,
+                        max_iter=self.max_iter, init=init,
+                        verbose=self.verbose, tol=tol,
+                        precompute_distances=precompute_distances,
+                        x_squared_norms=x_squared_norms,
+                        # Change seed to ensure variety
+                        random_state=seed
+                    )
+                    for seed in seeds)
+            
             # Get results with the lowest inertia
             labels, inertia, centers, n_iters = zip(*results)
             best = np.argmin(inertia)
